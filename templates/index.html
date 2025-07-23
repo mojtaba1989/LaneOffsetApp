@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Model Control Panel</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: #f4f6f8;
+            margin: 40px;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        .container {
+            display: flex;
+            gap: 40px;
+            align-items: flex-start;
+        }
+
+        textarea {
+            width: 100%;
+            height: 400px;
+            font-family: monospace;
+            font-size: 14px;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            padding: 12px;
+            resize: vertical;
+        }
+
+        .left-panel,
+        .right-panel {
+            flex: 1;
+            min-width: 400px;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 10px 10px 0 0;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        #stop-btn {
+            background-color: #e53935;
+        }
+
+        #stop-btn:hover {
+            background-color: #d32f2f;
+        }
+
+        #log {
+            padding: 15px;
+            background-color: #000;
+            color: #0f0;
+            font-family: monospace;
+            font-size: 13px;
+            height: 400px;
+            overflow-y: auto;
+            border-radius: 6px;
+            white-space: pre-wrap;
+            border: 1px solid #ccc;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Model Runner Control Panel</h1>
+
+<div class="container">
+    <!-- Left panel: Config -->
+    <div class="left-panel">
+        <h3>Edit Config:</h3>
+        <textarea id="config" spellcheck="false"></textarea>
+        <div>
+            <button onclick="saveConfig()">💾 Save</button>
+            <button onclick="startModel()">▶ Start</button>
+            <button id="stop-btn" onclick="stopModel()">⏹ Stop</button>
+        </div>
+    </div>
+
+    <!-- Right panel: Logs -->
+    <div class="right-panel">
+        <h3>Live Logs:</h3>
+        <div id="log">Waiting for logs...</div>
+    </div>
+</div>
+
+<script>
+    // Load config on page load
+    fetch('/config')
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById('config').value = JSON.stringify(data, null, 4);
+        });
+
+    function saveConfig() {
+        const configText = document.getElementById("config").value;
+        try {
+            const config = JSON.parse(configText);
+            fetch('/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config)
+            })
+            .then(res => {
+                if (res.ok) {
+                    appendLog("💾 Config saved.\n");
+                } else {
+                    res.text().then(t => appendLog("❌ Save failed: " + t + "\n"));
+                }
+            });
+        } catch (e) {
+            alert("⚠ Invalid JSON config!");
+        }
+    }
+
+    function startModel() {
+        const configText = document.getElementById("config").value;
+        try {
+            const config = JSON.parse(configText);
+            fetch('/run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config)
+            })
+            .then(response => response.json())
+            .then(data => appendLog("✅ Run started.\n"))
+            .catch(err => appendLog("❌ Error starting run: " + err + "\n"));
+        } catch (e) {
+            alert("⚠ Invalid JSON config!");
+        }
+    }
+
+    function stopModel() {
+        fetch('/stop', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => appendLog("🛑 Stopped.\n"))
+            .catch(err => appendLog("❌ Error stopping run: " + err + "\n"));
+    }
+
+    function appendLog(message) {
+        const logBox = document.getElementById("log");
+        logBox.textContent += message;
+        logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    // Live log from server
+    const logSocket = new EventSource('/logs');
+    logSocket.onmessage = function (event) {
+        appendLog(event.data + "\n");
+    };
+</script>
+
+</body>
+</html>
