@@ -367,34 +367,47 @@
         });
 }
 
-  const term = new Terminal();
-  term.open(document.getElementById('terminal'));
-  term.write('Welcome to Web Terminal\r\n$ ');
+    const term = new Terminal();
+    term.open(document.getElementById('terminal'));
+    term.write('Welcome to Web Terminal\r\n$ ');
 
-  let command = '';
-  term.onKey(e => {
+    let command = '';
+    term.onKey(e => {
     const char = e.key;
     if (char === '\r') {
-      fetch('/run_cmd', {
+    fetch('/run_cmd', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cmd: command })
-      })
-      .then(res => res.text())
-      .then(output => {
+    })
+    .then(res => res.text())
+    .then(output => {
         term.write('\r\n' + output + '\r\n$ ');
         command = '';
-      });
+    });
     } else if (char === '\u007F') {  // backspace
-      if (command.length > 0) {
+    if (command.length > 0) {
         command = command.slice(0, -1);
         term.write('\b \b');
-      }
-    } else {
-      command += char;
-      term.write(char);
     }
-  });
+    } else {
+    command += char;
+    term.write(char);
+    }
+    });
+
+    function systemControl(action) {
+        const confirmMsg = action === 'shutdown'
+            ? "Are you sure you want to shut down the system?"
+            : "Are you sure you want to restart the system?";
+
+        if (confirm(confirmMsg)) {
+            fetch(`/system/${action}`, { method: 'POST' })
+                .then(res => res.json())
+                .then(data => alert(data.message))
+                .catch(err => alert("Action failed: " + err));
+        }
+    }
 </script>
 
 
