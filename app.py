@@ -667,7 +667,7 @@ def system_control(action):
         return jsonify({'status': 'error', 'message': 'Invalid action'}), 400
 
     try:
-        cmd = ['sudo', '/usr/sbin/shutdown', 'now'] if action == 'shutdown' else ['reboot']
+        cmd = ['sudo', '/usr/sbin/shutdown', 'now'] if action == 'shutdown' else ['sudo', '/usr/sbin/reboot']
         subprocess.run(cmd)
         return jsonify({'status': 'success', 'message': f'{action.capitalize()} initiated.'})
     except Exception as e:
