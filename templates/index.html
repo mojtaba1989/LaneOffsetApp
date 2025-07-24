@@ -232,8 +232,11 @@
     
     <div class="panel">
         <h3>Remote SSH Terminal</h3>
-        <p>To reboot: reboot</p>
-        <p>To shutdown: sudo /sbin/shutdown now</p>
+        <div class="button-group">
+            <button id="start-btn" onclick="systemControl('shutdown')">🔴 Shutdown</button>
+            <button id="stop-btn" onclick="systemControl('reboot')">🔁 Restart</button>
+        </div>
+        <p></p>
         <div id="terminal" style="height: 70%; width: 100%; background: black; color: white;"></div>
     </div>
 </div>

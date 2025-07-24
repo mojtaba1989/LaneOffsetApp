@@ -659,6 +659,19 @@ def run_cmd():
         return f"Error: {e.output.decode('utf-8')}"
     except Exception as e:
         return f"Exception: {str(e)}"
+    
+
+@app.route('/system/<action>', methods=['POST'])
+def system_control(action):
+    if action not in ['shutdown', 'reboot']:
+        return jsonify({'status': 'error', 'message': 'Invalid action'}), 400
+
+    try:
+        cmd = ['sudo', '/usr/sbin/shutdown', 'now'] if action == 'shutdown' else ['reboot']
+        subprocess.run(cmd)
+        return jsonify({'status': 'success', 'message': f'{action.capitalize()} initiated.'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
