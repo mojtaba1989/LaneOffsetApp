@@ -121,8 +121,8 @@
         #calib-btn { background-color: #eb8aff; }
         #calib-btn:hover { background-color: #e3afff; }
 
-        #can-btn { background-color: #928aff; }
-        #can-btn:hover { background-color: #afb4ff; }
+        #can-btn { background-color: var(--accent-blue); }
+        #can-btn:hover { background-color: #8ab4f8; }
 
 
 
@@ -217,12 +217,24 @@
         </div>
     </div>
 </div>
+
 <div class="container">
     <div class="panel">
         <h3>CAN Channels</h3>
-        <button class="can-btn" onclick="fetchCANChannels()">🔄 Refresh CAN Channels</button>
+        <button class="log-btn" onclick="fetchCANChannels()">🔄 Refresh CAN Channels</button>
         <ul id="canChannelList"></ul>
     </div>
+</div>
+
+<div class="container">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
+    
+    <div class="panel">
+        <h3>Remote SSH Command Example</h3>
+        <div id="terminal" style="height: 80%; width: 100%; background: black; color: white;"></div>
+    </div>
+</div>
 
 <script>
     // --- Existing Functions ---
@@ -349,7 +361,37 @@
             list.innerHTML = "<li>Failed to fetch CAN channels: " + err + "</li>";
         });
 }
+
+  const term = new Terminal();
+  term.open(document.getElementById('terminal'));
+  term.write('Welcome to Web Terminal\r\n$ ');
+
+  let command = '';
+  term.onKey(e => {
+    const char = e.key;
+    if (char === '\r') {
+      fetch('/run_cmd', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cmd: command })
+      })
+      .then(res => res.text())
+      .then(output => {
+        term.write('\r\n' + output + '\r\n$ ');
+        command = '';
+      });
+    } else if (char === '\u007F') {  // backspace
+      if (command.length > 0) {
+        command = command.slice(0, -1);
+        term.write('\b \b');
+      }
+    } else {
+      command += char;
+      term.write(char);
+    }
+  });
 </script>
+
 
 </body>
 </html>

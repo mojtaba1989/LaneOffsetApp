@@ -17,6 +17,7 @@ from flask import (Flask, render_template, Response,
                     stream_with_context, session)
 import threading, queue
 from flask_session import Session
+import subprocess
 
 IGNORE_TIMER = True  # Set to True to ignore timing in the Timer class
 stop_event = threading.Event()
@@ -646,6 +647,18 @@ def get_can_channels():
         return jsonify({"channels": data})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+@app.route('/run_cmd', methods=['POST'])
+def run_cmd():
+    data = request.get_json()
+    cmd = data.get('cmd', '')
+    try:
+        output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, timeout=5)
+        return output.decode('utf-8')
+    except subprocess.CalledProcessError as e:
+        return f"Error: {e.output.decode('utf-8')}"
+    except Exception as e:
+        return f"Exception: {str(e)}"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
