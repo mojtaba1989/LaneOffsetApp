@@ -4,103 +4,217 @@
     <meta charset="UTF-8">
     <title>Model Control Panel</title>
     <style>
+        /* Modern Font & Root Variables */
+        :root {
+            --bg-color: #1a1b26;
+            --panel-bg: #24283b;
+            --text-color: #c0caf5;
+            --header-color: #a9b1d6;
+            --border-color: #414868;
+            --accent-blue: #7aa2f7;
+            --accent-green: #9ece6a;
+            --accent-red: #f7768e;
+            --font-main: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            --font-mono: "Fira Code", "Consolas", "Courier New", monospace;
+        }
+
         body {
-            font-family: 'Segoe UI', sans-serif;
-            background-color: #f4f6f8;
-            margin: 40px;
+            font-family: var(--font-main);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 2rem;
         }
 
-        h1 {
-            color: #333;
-        }
-
+        /* --- Layout & Panels --- */
         .container {
             display: flex;
-            gap: 40px;
+            gap: 2rem;
             align-items: flex-start;
         }
 
-        textarea {
-            width: 100%;
-            height: 400px;
-            font-family: monospace;
-            font-size: 14px;
-            background-color: #1e1e1e;
-            color: #d4d4d4;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            padding: 12px;
-            resize: vertical;
-        }
-
-        .left-panel,
-        .right-panel {
+        .panel {
             flex: 1;
+            background-color: var(--panel-bg);
+            border-radius: 12px;
+            padding: 1.5rem;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
             min-width: 400px;
         }
 
+        /* --- Typography --- */
+        h1 {
+            color: var(--header-color);
+            text-align: center;
+            margin-bottom: 2rem;
+            font-weight: 600;
+        }
+
+        h3 {
+            color: var(--header-color);
+            margin-top: 0;
+            margin-bottom: 1rem;
+            font-weight: 500;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.75rem;
+        }
+
+        /* --- Interactive Elements --- */
+        textarea, #log {
+            width: 100%;
+            height: 400px;
+            font-family: var(--font-mono);
+            font-size: 14px;
+            background-color: #1e1e2e; /* Slightly different dark bg */
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem;
+            box-sizing: border-box; /* Important for padding */
+            resize: vertical;
+        }
+        
+        #log {
+            white-space: pre-wrap;
+            overflow-y: auto;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+        
         button {
-            background-color: #4CAF50;
+            flex-grow: 1;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Button Colors */
+        #save-btn { background-color: var(--accent-blue); }
+        #save-btn:hover { background-color: #8ab4f8; }
+
+        #start-btn { background-color: var(--accent-green); }
+        #start-btn:hover { background-color: #a6d87a; }
+
+        #stop-btn { background-color: var(--accent-red); }
+        #stop-btn:hover { background-color: #ff8a98; }
+
+        #calib-btn { background-color: #eb8aff; }
+        #calib-btn:hover { background-color: #e3afff; }
+
+        /* --- NEW: Log Level Control Styles --- */
+        .log-level-control {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.5rem; /* Space between control and status */
+        }
+
+        .log-level-control label {
+            font-weight: 500;
+            color: var(--header-color);
+        }
+
+        select {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-family: var(--font-main);
+            font-size: 14px;
+        }
+        
+        #log-status {
+            font-size: 13px;
+            min-height: 1.2em; /* Prevents layout shift */
+            margin-bottom: 1rem;
+            transition: color 0.3s ease;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--panel-bg); }
+        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #565f89; }
+
+        .log-btn {
+            background-color: #2196f3;
             color: white;
             border: none;
             padding: 10px 20px;
-            margin: 10px 10px 0 0;
+            margin: 10px 10px 10px 0;
             border-radius: 4px;
             font-size: 16px;
             cursor: pointer;
             transition: background-color 0.2s ease;
         }
 
-        button:hover {
-            background-color: #45a049;
-        }
-
-        #stop-btn {
-            background-color: #e53935;
-        }
-
-        #stop-btn:hover {
-            background-color: #d32f2f;
-        }
-
-        #log {
-            padding: 15px;
-            background-color: #000;
-            color: #0f0;
-            font-family: monospace;
-            font-size: 13px;
-            height: 400px;
-            overflow-y: auto;
-            border-radius: 6px;
-            white-space: pre-wrap;
-            border: 1px solid #ccc;
+        .log-btn:hover {
+            background-color: #1976d2;
         }
     </style>
 </head>
 <body>
 
-<h1>Model Runner Control Panel</h1>
+<h1>✨ Model Runner Control Panel ✨</h1>
 
 <div class="container">
-    <!-- Left panel: Config -->
-    <div class="left-panel">
-        <h3>Edit Config:</h3>
+    <div class="panel">
+        <h3>Edit Config</h3>
         <textarea id="config" spellcheck="false"></textarea>
-        <div>
-            <button onclick="saveConfig()">💾 Save</button>
-            <button onclick="startModel()">▶ Start</button>
-            <button id="stop-btn" onclick="stopModel()">⏹ Stop</button>
+        <div class="button-group">
+            <button id="save-btn" onclick="saveConfig()">💾 Save</button>
+            <button id="start-btn" onclick="startModel()">▶️ Start</button>
+            <button id="stop-btn" onclick="stopModel()">⏹️ Stop</button>
+            <button id="calib-btn" onclick="window.location.href='/camera'">📷Calib</button>
         </div>
     </div>
 
-    <!-- Right panel: Logs -->
-    <div class="right-panel">
-        <h3>Live Logs:</h3>
+    <div class="panel">
+        <h3>Live Logs</h3>
+        
+        <div class="log-level-control">
+            <label for="log-level-select">Log Level:</label>
+            <select id="log-level-select" onchange="updateLogLevel()">
+                <option value="DEBUG">DEBUG</option>
+                <option value="INFO">INFO</option>
+                <option value="WARNING" selected>WARNING</option>
+                <option value="ERROR">ERROR</option>
+                <option value="CRITICAL">CRITICAL</option>
+            </select>
+        </div>
+        <div id="log-status"></div>
+
         <div id="log">Waiting for logs...</div>
+
+        <div>
+            <button class="log-btn" onclick="window.location.href='logs.html'">📁 View Log Files</button>
+        </div>
     </div>
 </div>
 
 <script>
+    // --- Existing Functions ---
+
     // Load config on page load
     fetch('/config')
         .then(res => res.json())
@@ -125,7 +239,7 @@
                 }
             });
         } catch (e) {
-            alert("⚠ Invalid JSON config!");
+            alert("⚠️ Invalid JSON config!");
         }
     }
 
@@ -142,7 +256,7 @@
             .then(data => appendLog("✅ Run started.\n"))
             .catch(err => appendLog("❌ Error starting run: " + err + "\n"));
         } catch (e) {
-            alert("⚠ Invalid JSON config!");
+            alert("⚠️ Invalid JSON config!");
         }
     }
 
@@ -155,6 +269,9 @@
 
     function appendLog(message) {
         const logBox = document.getElementById("log");
+        if (logBox.textContent === 'Waiting for logs...') {
+            logBox.textContent = ''; // Clear initial message
+        }
         logBox.textContent += message;
         logBox.scrollTop = logBox.scrollHeight;
     }
@@ -164,6 +281,39 @@
     logSocket.onmessage = function (event) {
         appendLog(event.data + "\n");
     };
+
+    // --- NEW: Function to set the log level ---
+    async function updateLogLevel() {
+        const selectElement = document.getElementById('log-level-select');
+        const newLevel = selectElement.value;
+        const statusElement = document.getElementById('log-status');
+        
+        statusElement.textContent = `Setting level to ${newLevel}...`;
+
+        try {
+            const response = await fetch('/set_log_level', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ level: newLevel }),
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                statusElement.textContent = `✅ ${result.message}`;
+                statusElement.style.color = 'var(--accent-green)';
+            } else {
+                statusElement.textContent = `❌ Error: ${result.message}`;
+                statusElement.style.color = 'var(--accent-red)';
+            }
+
+        } catch (error) {
+            statusElement.textContent = `❌ Network or server error: ${error}`;
+            statusElement.style.color = 'var(--accent-red)';
+        }
+    }
 </script>
 
 </body>

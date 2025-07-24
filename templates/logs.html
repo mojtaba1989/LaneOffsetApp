@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Log Files</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: #f4f6f8;
+            margin: 40px;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+
+        li {
+            margin: 10px 0;
+        }
+
+        a {
+            text-decoration: none;
+            color: #007bff;
+            font-size: 16px;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .button {
+            display: inline-block;
+            background-color: #4CAF50;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            text-decoration: none;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+
+        .button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+
+<a class="button" href="/">← Back to Main</a>
+
+<h1>Available Log Files</h1>
+<ul id="logList"></ul>
+
+<script>
+    fetch('/log_files')
+        .then(response => response.json())
+        .then(files => {
+            const list = document.getElementById('logList');
+            files.forEach(file => {
+                const li = document.createElement('li');
+                const link = document.createElement('a');
+                link.href = '/log_files/' + file;
+                link.textContent = file;
+                li.appendChild(link);
+                list.appendChild(li);
+            });
+        })
+        .catch(error => {
+            document.getElementById('logList').textContent = '❌ Failed to load log list.';
+            console.error(error);
+        });
+</script>
+
+</body>
+</html>

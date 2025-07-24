@@ -12,8 +12,11 @@ import os
 import time
 import sys
 import signal
-from flask import Flask, render_template, Response, jsonify, request
+from flask import (Flask, render_template, Response,
+                    jsonify, request, send_from_directory,
+                    stream_with_context, session)
 import threading, queue
+from flask_session import Session
 
 IGNORE_TIMER = True  # Set to True to ignore timing in the Timer class
 stop_event = threading.Event()
@@ -39,15 +42,13 @@ class Timer:
         self.elapsed = self.end - self.start
         print(f"{self.name} took {self.elapsed:.4f} seconds")
 
-def get_log_level(level_name):
-    log_levels = {
-        'DEBUG': logging.DEBUG,
-        'INFO': logging.INFO,
-        'WARNING': logging.WARNING,
-        'ERROR': logging.ERROR,
-        'CRITICAL': logging.CRITICAL
-    }
-    return log_levels.get(level_name, logging.INFO)
+LOG_LEVELS = {
+    'DEBUG': logging.DEBUG,
+    'INFO': logging.INFO,
+    'WARNING': logging.WARNING,
+    'ERROR': logging.ERROR,
+    'CRITICAL': logging.CRITICAL
+}
 
 def get_can_busrate(busrate):
     can_baudrates = {
@@ -91,6 +92,7 @@ def calculate_distance(p1, p2):
         return np.nan
     return np.sqrt((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2)
 
+
 class offsetToCenterLine:
     def __init__(self):
         self.DEBUG_LEVEL = 1
@@ -110,27 +112,30 @@ class offsetToCenterLine:
 
     def setup_logger(self):
         self.logger = logging.getLogger("offsetToCenterLine")
-        self.logger.setLevel(logging.DEBUG)
+        for handler in self.logger.handlers[:]:
+            if isinstance(handler, logging.FileHandler):
+                self.logger.removeHandler(handler)
+                handler.close()
+
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(funcName)s - %(message)s')
+        self.logger.setLevel(logging.DEBUG)
 
-        level = self.config.get("DEBUG", {}).get("LEVEL", "INFO")
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(get_log_level(level))
-        console_handler.setFormatter(formatter)
-        self.logger.addHandler(console_handler)
-        self.logger.info("Logger initialized.")
+        if not any(isinstance(h, logging.StreamHandler) for h in self.logger.handlers):
+            console_handler = logging.StreamHandler(sys.stdout)
+            console_handler.setLevel(logging.ERROR)
+            console_handler.setFormatter(formatter)
+            self.logger.addHandler(console_handler)
 
-
-        if self.config.get("DEBUG", {}).get("LOG_FILE", {}).get("ENABLED", False):
+        if self.config.get("LOG", {}).get("ENABLED", False):
             timestamp = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
             file_name = f"{timestamp}.log"
             os.makedirs("log", exist_ok=True)
             file_name = os.path.join("log", file_name)
-            level = self.config.get("DEBUG", {}).get("LOG_FILE", {}).get("LEVEL", "INFO")
-            file_handler = logging.FileHandler(file_name)
-            file_handler.setLevel(get_log_level(level))
-            file_handler.setFormatter(formatter)
-            self.logger.addHandler(file_handler)
+            level = self.config.get("LOG", {}).get("LEVEL", "INFO")
+            self.file_handler = logging.FileHandler(file_name)
+            self.file_handler.setLevel(LOG_LEVELS.get(level, logging.INFO))
+            self.file_handler.setFormatter(formatter)
+            self.logger.addHandler(self.file_handler)
 
     def load_config(self, config=None):
         self.config = None
@@ -454,16 +459,16 @@ class offsetToCenterLine:
         self.load_config(config=config)
         self.setup_logger()
         if self.set_source()!= 0:
-            exit(1)
+            self.shutdown(exit_code=1)
         if self.open_socket() > 1:
-            exit(2)
+            self.shutdown(exit_code=2)
         if self.open_can() > 1:
-            exit(3)
+            self.shutdown(exit_code=3)
         if self.open_source()!= 0:
-            exit(4)
+            self.shutdown(exit_code=4)
         if self.init_model()!= 0:
-            exit(5)
-    
+            self.shutdown(exit_code=5)
+
     def run(self, stop_event=None):
         while True:
             if stop_event and stop_event.is_set():
@@ -483,7 +488,7 @@ class offsetToCenterLine:
         self.shutdown()
         return 0
     
-    def shutdown(self):
+    def shutdown(self, exit_code=0):
         self.close_source()
         self.close_can()
         self.close_socket()
@@ -491,7 +496,15 @@ class offsetToCenterLine:
             self.logger.info("Server shutdown complete.")
         else:
             print("Server shutdown complete.")
-        sys.exit(0)
+        if hasattr(self, 'file_handler'):
+            self.logger.removeHandler(self.file_handler)
+            self.file_handler.close()
+            self.file_handler = None
+        if hasattr(self, 'console_handler'):
+            self.logger.removeHandler(self.console_handler)
+            self.console_handler.close()
+            self.console_handler = None
+        sys.exit(exit_code)
 
 class QueueLogHandler(logging.Handler):
     def __init__(self, log_queue):
@@ -503,12 +516,24 @@ class QueueLogHandler(logging.Handler):
         self.log_queue.put(msg)
 
 app = Flask(__name__)
+camera_capture = {
+    "cap": None,
+    "init": False
+}
+
 log_queue = queue.Queue()
 log_stream_handler = QueueLogHandler(log_queue)
 log_stream_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(funcName)s - %(message)s'))
 log_stream_handler.setLevel(logging.WARNING)
 logger = logging.getLogger("offsetToCenterLine")
 logger.addHandler(log_stream_handler)
+
+def init_camera_capture(config):
+    cam_source = config.get("SOURCE", 0)
+    if camera_capture["cap"] is not None:
+        camera_capture["cap"].release()
+    camera_capture["cap"] = cv2.VideoCapture(cam_source)
+    camera_capture["init"] = camera_capture["cap"].isOpened()
 
 @app.route('/')
 def home():
@@ -552,13 +577,58 @@ def save_config():
     config = request.get_json()
     if config is None:
         return jsonify({"error": "Invalid JSON"}), 400
-
+    init_camera_capture(config)
     try:
         with open("config.json", "w") as f:
             json.dump(config, f, indent=4)
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+    
+
+@app.route('/set_log_level', methods=['POST'])
+def set_log_level():
+    data = request.get_json()
+    new_level_str = data.get('level')
+    if new_level_str in LOG_LEVELS:
+        new_level_int = LOG_LEVELS[new_level_str]
+        log_stream_handler.setLevel(new_level_int)
+        return jsonify({"success": True, "message": f"Log level set to {new_level_str}"}), 200
+    else:
+        return jsonify({"success": False, "message": "Invalid log level"}), 400
+
+LOG_DIR = './log'
+
+@app.route('/logs.html')
+def logs_page():
+    return render_template('logs.html')
+
+@app.route('/log_files')
+def list_log_files():
+    files = [f for f in os.listdir(LOG_DIR) if f.endswith('.log')]
+    files.sort(key=lambda x: os.path.getmtime(os.path.join(LOG_DIR, x)), reverse=True)
+    return jsonify(files)
+
+@app.route('/log_files/<path:filename>')
+def serve_log_file(filename):
+    return send_from_directory('log', filename)
+
+@app.route('/camera')
+def camera_page():
+    return render_template('camera.html')
+
+@app.route('/capture_frame')
+def capture_frame():
+    cap = camera_capture["cap"]
+    if cap is None or not cap.isOpened():
+        return "Camera not initialized", 400
+
+    success, frame = cap.read()
+    if not success:
+        return "Failed to capture frame", 500
+
+    _, buffer = cv2.imencode('.jpg', frame)
+    return Response(buffer.tobytes(), mimetype='image/jpeg')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
