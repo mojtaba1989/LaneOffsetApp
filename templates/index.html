@@ -30,7 +30,8 @@
         .container {
             display: flex;
             gap: 2rem;
-            align-items: flex-start;
+            align-items: stretch;
+            margin-bottom: 20px;
         }
 
         .panel {
@@ -119,6 +120,11 @@
 
         #calib-btn { background-color: #eb8aff; }
         #calib-btn:hover { background-color: #e3afff; }
+
+        #can-btn { background-color: #928aff; }
+        #can-btn:hover { background-color: #afb4ff; }
+
+
 
         /* --- NEW: Log Level Control Styles --- */
         .log-level-control {
@@ -211,6 +217,12 @@
         </div>
     </div>
 </div>
+<div class="container">
+    <div class="panel">
+        <h3>CAN Channels</h3>
+        <button class="can-btn" onclick="fetchCANChannels()">🔄 Refresh CAN Channels</button>
+        <ul id="canChannelList"></ul>
+    </div>
 
 <script>
     // --- Existing Functions ---
@@ -314,6 +326,29 @@
             statusElement.style.color = 'var(--accent-red)';
         }
     }
+    function fetchCANChannels() {
+    fetch('/can_channels')
+        .then(res => res.json())
+        .then(data => {
+            const list = document.getElementById('canChannelList');
+            list.innerHTML = ""; // Clear current list
+            if (data.channels) {
+                data.channels.forEach(line => {
+                    const li = document.createElement('li');
+                    li.textContent = line;
+                    list.appendChild(li);
+                });
+            } else {
+                const li = document.createElement('li');
+                li.textContent = "Error: " + data.error;
+                list.appendChild(li);
+            }
+        })
+        .catch(err => {
+            const list = document.getElementById('canChannelList');
+            list.innerHTML = "<li>Failed to fetch CAN channels: " + err + "</li>";
+        });
+}
 </script>
 
 </body>

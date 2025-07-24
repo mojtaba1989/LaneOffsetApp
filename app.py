@@ -24,6 +24,15 @@ stop_event = threading.Event()
 with open('config.json') as f:
     default_config = json.load(f)
 
+def list_can_channels():
+    num_channels = canlib.getNumberOfChannels()
+    result = [f"Found {num_channels} channels"]
+    for ch in range(num_channels):
+        chd = canlib.ChannelData(ch)
+        info = f"{ch}. {chd.channel_name} ({chd.card_upc_no.product()}:{chd.card_serial_no}/{chd.chan_no_on_card})"
+        result.append(info)
+    return result
+
 class Timer:
     def __init__(self, name="Block", ignore=IGNORE_TIMER):
         self.name = name
@@ -629,6 +638,14 @@ def capture_frame():
 
     _, buffer = cv2.imencode('.jpg', frame)
     return Response(buffer.tobytes(), mimetype='image/jpeg')
+
+@app.route('/can_channels')
+def get_can_channels():
+    try:
+        data = list_can_channels()
+        return jsonify({"channels": data})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
