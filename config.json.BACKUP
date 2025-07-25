@@ -1,8 +1,4 @@
 {
-    "Adjust": {
-        "Rotate": false,
-        "Stereo": false
-    },
     "CALIB": {
         "BIAS": 0,
         "SCALE": 0
@@ -10,13 +6,16 @@
     "CAN": {
         "BUSRATE": 500000,
         "CHANNEL": 0,
-        "ENABLED": true
+        "DBC": "./apsrc.dbc",
+        "ENABLED": true,
+        "MSG": "LaneOffsetCM_000"
     },
     "LANE_WIDTH": 3.3,
     "LOG": {
         "ENABLED": true,
         "LEVEL": "INFO"
     },
+    "MODEL_PATH": "yolomodelweights.pt",
     "NUM_OF_LINES": 3,
     "REF": {
         "center": [
@@ -54,5 +53,10 @@
             ]
         ]
     },
-    "SOURCE": "./test_videos/C920_2025_07_07_18_19_08.mp4"
+    "SOURCE": "./test_videos/C920_2025_07_07_18_19_08.mp4",
+    "UDP": {
+        "ADDR": "10.0.0.123",
+        "ENABLED": false,
+        "PORT": 5000
+    }
 }

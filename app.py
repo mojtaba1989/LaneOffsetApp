@@ -22,8 +22,7 @@ import subprocess
 IGNORE_TIMER = True  # Set to True to ignore timing in the Timer class
 stop_event = threading.Event()
 
-with open('config.json') as f:
-    default_config = json.load(f)
+CONFIG_FILE = 'config.json'
 
 def list_can_channels():
     num_channels = canlib.getNumberOfChannels()
@@ -108,35 +107,34 @@ class offsetToCenterLine:
         self.DEBUG_LEVEL = 1
         self.logger = None
         self.config = None
-
+        self.setup_logger()
+        self.load_config(None)
+        
         self.sock = None
-
         self.DBC = None
         self.canMsg = None
         self.can = None
-
         self.source = None
         self.source_type = None
-
         self.cap = None
 
     def setup_logger(self):
         self.logger = logging.getLogger("offsetToCenterLine")
+        self.formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(funcName)s - %(message)s')
+        self.logger.setLevel(logging.DEBUG)
+        if not any(isinstance(h, logging.StreamHandler) for h in self.logger.handlers):
+            console_handler = logging.StreamHandler(sys.stdout)
+            console_handler.setLevel(logging.ERROR)
+            console_handler.setFormatter(self.formatter)
+            self.logger.addHandler(console_handler)
+
+    def setup_file_logger(self):
         for handler in self.logger.handlers[:]:
             if isinstance(handler, logging.FileHandler):
                 self.logger.removeHandler(handler)
                 handler.close()
-
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(funcName)s - %(message)s')
-        self.logger.setLevel(logging.DEBUG)
-
-        if not any(isinstance(h, logging.StreamHandler) for h in self.logger.handlers):
-            console_handler = logging.StreamHandler(sys.stdout)
-            console_handler.setLevel(logging.ERROR)
-            console_handler.setFormatter(formatter)
-            self.logger.addHandler(console_handler)
-
-        if self.config.get("LOG", {}).get("ENABLED", False):
+                
+        if self.config.get("LOG", {}).get("ENABLED", False) is True:
             timestamp = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
             file_name = f"{timestamp}.log"
             os.makedirs("log", exist_ok=True)
@@ -144,9 +142,9 @@ class offsetToCenterLine:
             level = self.config.get("LOG", {}).get("LEVEL", "INFO")
             self.file_handler = logging.FileHandler(file_name)
             self.file_handler.setLevel(LOG_LEVELS.get(level, logging.INFO))
-            self.file_handler.setFormatter(formatter)
+            self.file_handler.setFormatter(self.formatter)
             self.logger.addHandler(self.file_handler)
-
+        
     def load_config(self, config=None):
         self.config = None
         if config is not None:
@@ -154,16 +152,19 @@ class offsetToCenterLine:
             if self.logger:
                 self.logger.info("Configuration loaded from user input.")
             return 0
+        
         try:
             with open('config.json', 'r') as f:
                 config_ = json.load(f)
         except FileNotFoundError:
-            print(f"Configuration file config.json not found. return 1")
+            self.logger.error(f"Configuration file config.json not found. return 1")
             return 1
         except json.JSONDecodeError:
-            print(f"Error decoding JSON from the configuration file config.json. return 2")
+            self.logger.error(f"Error decoding JSON from the configuration file config.json. return 2")
             return 2
+        
         self.config = config_
+        self.logger.info("Configuration loaded from config.json.")
         return 0
         
     def open_socket(self):
@@ -171,11 +172,13 @@ class offsetToCenterLine:
         self.logger.info("Opening socket...")
         if self.config is None:
             return 1
+        
         if self.config.get('UDP', {}).get('ENABLED', False) is not True:
             self.logger.warning("UDP is not enabled in the configuration. return 1")
             return 1
+        
         try:
-            host = str(self.config.get('UDP', {}).get('ADDR', 'localhost'))
+            host = str(self.config.get('UDP', {}).get('ADDR', '127.0.0.1'))
             port = self.config.get('UDP', {}).get('PORT', 5000)
             self.logger.info(f"Connecting to {host}:{port}...")
             if not isinstance(port, int):
@@ -187,6 +190,7 @@ class offsetToCenterLine:
         except socket.error as e:
             self.logger.error(f"Socket error: {e}, return 3")
             return 3
+        
         return 0
 
     def close_socket(self):
@@ -201,6 +205,7 @@ class offsetToCenterLine:
         if not self.sock:
             self.logger.debug("Socket is not initialized., return 1")
             return 1
+        
         try:
             msg = struct.pack('!f', data)
             self.sock.send(msg)
@@ -223,7 +228,7 @@ class offsetToCenterLine:
             self.logger.warning("CAN is not enabled in the configuration. return 1")
             return 1
         try:
-            dbc_file = self.config.get('CAN', {}).get('DBC', '')
+            dbc_file = self.config.get('CAN', {}).get('DBC', './apsrc.dbc')
             if not dbc_file:
                 self.logger.error("DBC file path is empty. return 2")
                 return 2
@@ -233,7 +238,7 @@ class offsetToCenterLine:
             self.logger.error(f"Error opening CAN DBC: {e}, return 3")
             return 3
         try:
-            msg_ = self.DBC.get_message_by_name(self.config.get('CAN', {}).get('MSG', ''))
+            msg_ = self.DBC.get_message_by_name(self.config.get('CAN', {}).get('MSG', 'LaneOffsetCM_000'))
             self.logger.info(f"Bound CAN message: {msg_.name}")
         except kvadblib.exceptions.KvdNoMessage as e:
             self.logger.error(f"Error binding CAN message: {e}, return 4")
@@ -337,7 +342,7 @@ class offsetToCenterLine:
     def init_model(self):
         if self.config is None:
             return 1
-        model_path = self.config.get('MODEL_PATH', '')
+        model_path = self.config.get('MODEL_PATH', 'yolomodelweights.pt')
         if not model_path:
             self.logger.error("Model path is not set in the configuration. return 2")
             return 2
@@ -387,6 +392,27 @@ class offsetToCenterLine:
         offset = offset * self.config.get('LANE_WIDTH', 3.6) / lane_width
         offset = offset / self.config.get('SCALE', 1.0) - self.config.get('BIAS', 0.0)
         return 0, offset
+    
+    @staticmethod
+    def pre_process_frame(config, frame, to_model=True, shape=(1280, 720)):
+        if frame is None:
+            return 1, None
+        if config is None:
+            return 2, None
+        if config.get('Adjust', {}).get('Rotate', False) is True:
+            frame = cv2.rotate(frame, cv2.ROTATE_180)
+        if config.get('Adjust', {}).get('Stereo', False) in [True, 'left']:
+            H, W = frame.shape[:2]
+            frame = frame[:, :W//2]
+        elif config.get('Adjust', {}).get('Stereo', False) in ['right']:
+            H, W = frame.shape[:2]
+            frame = frame[:, W//2:]
+        if to_model:
+            frame = cv2.resize(frame, (640, 360))
+        else:
+            frame = cv2.resize(frame, shape)
+        return 0, frame
+
         
     def process_frame(self, frame):
         if self.model is None:
@@ -400,7 +426,7 @@ class offsetToCenterLine:
         W, H = ref[0], ref[1]
         
         with Timer("Frame Processing"):
-            frame = cv2.resize(frame, (640, 360))
+            _, frame = self.pre_process_frame(self.config, frame, to_model=True)
             results = self.model(frame, verbose=False)
 
         max_contour_length = 0
@@ -467,7 +493,7 @@ class offsetToCenterLine:
         
     def init(self, config=None):
         self.load_config(config=config)
-        self.setup_logger()
+        self.setup_file_logger()
         if self.set_source()!= 0:
             self.shutdown(exit_code=1)
         if self.open_socket() > 1:
@@ -510,10 +536,6 @@ class offsetToCenterLine:
             self.logger.removeHandler(self.file_handler)
             self.file_handler.close()
             self.file_handler = None
-        if hasattr(self, 'console_handler'):
-            self.logger.removeHandler(self.console_handler)
-            self.console_handler.close()
-            self.console_handler = None
         sys.exit(exit_code)
 
 class QueueLogHandler(logging.Handler):
@@ -530,16 +552,21 @@ camera_capture = {
     "cap": None,
     "init": False
 }
+config = {}
+server = None
 
 log_queue = queue.Queue()
 log_stream_handler = QueueLogHandler(log_queue)
 log_stream_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(funcName)s - %(message)s'))
-log_stream_handler.setLevel(logging.WARNING)
+log_stream_handler.setLevel(logging.INFO)
 logger = logging.getLogger("offsetToCenterLine")
 logger.addHandler(log_stream_handler)
 
-def init_camera_capture(config):
+def init_camera_capture(reset=False):
     cam_source = config.get("SOURCE", 0)
+    if camera_capture['init'] is True and not reset:
+        return
+    logger.info("Initializing camera capture...")
     if camera_capture["cap"] is not None:
         camera_capture["cap"].release()
     camera_capture["cap"] = cv2.VideoCapture(cam_source)
@@ -547,16 +574,23 @@ def init_camera_capture(config):
 
 @app.route('/')
 def home():
+    global server
+    global config
+    with open(CONFIG_FILE, 'r') as f:
+        config = json.load(f)
+    server = offsetToCenterLine()
+    logger.info("Starting server...")
+    init_camera_capture(reset=True)
     return render_template('index.html')
 
 @app.route('/run', methods=['POST'])
 def run_model():
+    global server, stop_event
+    global config
     stop_event.clear()
-
     config = request.get_json()
-    if not config:
-        return jsonify({"error": "No config received"}), 400
-    
+    if config is None:
+        return jsonify({"error": "Invalid JSON"}), 400
     def run_instance():
         server = offsetToCenterLine()
         server.init(config=config)
@@ -580,14 +614,18 @@ def stop_model():
 
 @app.route('/config', methods=['GET'])
 def get_config():
-    return jsonify(default_config)
+    global config
+    return jsonify(config)
 
 @app.route('/save', methods=['POST'])
 def save_config():
+    global config
     config = request.get_json()
     if config is None:
+        logger.error("Invalid JSON received for configuration.")
         return jsonify({"error": "Invalid JSON"}), 400
-    init_camera_capture(config)
+    logger.info("Saving configuration...")
+    init_camera_capture(reset=True)
     try:
         with open("config.json", "w") as f:
             json.dump(config, f, indent=4)
@@ -636,7 +674,9 @@ def capture_frame():
     success, frame = cap.read()
     if not success:
         return "Failed to capture frame", 500
+    
 
+    _, frame = offsetToCenterLine.pre_process_frame(config, frame, to_model=False, shape=(1280, 720))
     _, buffer = cv2.imencode('.jpg', frame)
     return Response(buffer.tobytes(), mimetype='image/jpeg')
 
@@ -667,7 +707,7 @@ def system_control(action):
         return jsonify({'status': 'error', 'message': 'Invalid action'}), 400
 
     try:
-        cmd = ['sudo', '/usr/sbin/shutdown', 'now'] if action == 'shutdown' else ['sudo', '/usr/sbin/reboot']
+        cmd = ['sudo', '/usr/sbin/shutdown', 'now'] if action == 'shutdown' else ['sudo', '/usr/sbin/reboot', 'now']
         subprocess.run(cmd)
         return jsonify({'status': 'success', 'message': f'{action.capitalize()} initiated.'})
     except Exception as e:

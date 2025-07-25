@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Model Control Panel</title>
+    <title>OTC Control Panel</title>
     <style>
         /* Modern Font & Root Variables */
         :root {
@@ -181,17 +181,19 @@
 </head>
 <body>
 
-<h1>✨ Model Runner Control Panel ✨</h1>
+<h1>✨ Offset To Centerline Control Panel ✨</h1>
 
 <div class="container">
     <div class="panel">
-        <h3>Edit Config</h3>
+        <h3>Edit Configuration</h3>
         <textarea id="config" spellcheck="false"></textarea>
         <div class="button-group">
-            <button id="save-btn" onclick="saveConfig()">💾 Save</button>
             <button id="start-btn" onclick="startModel()">▶️ Start</button>
             <button id="stop-btn" onclick="stopModel()">⏹️ Stop</button>
-            <button id="calib-btn" onclick="window.location.href='/camera'">📷Calib</button>
+        </div>
+        <div class="button-group">
+            <button id="calib-btn" onclick="window.location.href='/camera'">📷 Calibrations</button>
+            <button id="save-btn" onclick="saveConfig()">💾 Save Config</button>
         </div>
     </div>
 
@@ -202,8 +204,8 @@
             <label for="log-level-select">Log Level:</label>
             <select id="log-level-select" onchange="updateLogLevel()">
                 <option value="DEBUG">DEBUG</option>
-                <option value="INFO">INFO</option>
-                <option value="WARNING" selected>WARNING</option>
+                <option value="INFO" selected>INFO</option>
+                <option value="WARNING">WARNING</option>
                 <option value="ERROR">ERROR</option>
                 <option value="CRITICAL">CRITICAL</option>
             </select>
@@ -224,6 +226,13 @@
         <button class="log-btn" onclick="fetchCANChannels()">🔄 Refresh CAN Channels</button>
         <ul id="canChannelList"></ul>
     </div>
+    <div class="panel">
+        <h3>Device Control</h3>
+        <div class="button-group">
+            <button id="start-btn" onclick="systemControl('shutdown')">🔴 Shutdown</button>
+            <button id="stop-btn" onclick="systemControl('reboot')">🔁 Restart</button>
+        </div>
+    </div>
 </div>
 
 <div class="container">
@@ -232,11 +241,6 @@
     
     <div class="panel">
         <h3>Remote SSH Terminal</h3>
-        <div class="button-group">
-            <button id="start-btn" onclick="systemControl('shutdown')">🔴 Shutdown</button>
-            <button id="stop-btn" onclick="systemControl('reboot')">🔁 Restart</button>
-        </div>
-        <p></p>
         <div id="terminal" style="height: 70%; width: 100%; background: black; color: white;"></div>
     </div>
 </div>
@@ -410,6 +414,8 @@
     }
 </script>
 
-
+<footer style="margin-top: 4rem; text-align: center; font-size: 14px; color: var(--text-color); opacity: 0.5;">
+    &copy; 2025 Advanced Power System Labs. All rights reserved.
+</footer>
 </body>
 </html>
