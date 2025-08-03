@@ -137,6 +137,10 @@
 <h1>✨ Capture Camera Frame ✨</h1>
 
 <button onclick="captureFrame()">📷 Capture Frame</button>
+<label style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+    <input type="checkbox" id="runModelCheckbox" checked />
+    <span>Overlay model predictions</span>
+</label>
 
 <canvas id="canvas" style="display: none;"></canvas>
 
@@ -164,7 +168,8 @@
     const magCtx = magnifierCanvas.getContext('2d');
 
     function captureFrame() {
-        fetch('/capture_frame')
+        const runModel = document.getElementById('runModelCheckbox').checked;
+        fetch(`/capture_frame?run_model=${runModel}`)
             .then(response => response.blob())
             .then(blob => {
                 const imgURL = URL.createObjectURL(blob);

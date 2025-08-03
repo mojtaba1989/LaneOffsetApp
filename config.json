@@ -1,6 +1,6 @@
 {
     "Adjust": {
-        "Rotate": false,
+        "Rotate": true,
         "Stereo": false
     },
     "CALIB": {
@@ -15,18 +15,18 @@
     "LANE_WIDTH": 3.3,
     "LOG": {
         "ENABLED": true,
-        "LEVEL": "INFO"
+        "LEVEL": "DEBUG"
     },
     "NUM_OF_LINES": 3,
     "REF": {
         "center": [
             [
-                666,
-                490
+                614,
+                455
             ],
             [
-                681,
-                560
+                615,
+                471
             ]
         ],
         "image_size": [
@@ -35,24 +35,24 @@
         ],
         "left": [
             [
-                597,
-                490
+                499,
+                452
             ],
             [
-                565,
-                560
+                492,
+                472
             ]
         ],
         "right": [
             [
-                744,
-                490
+                723,
+                450
             ],
             [
-                804,
-                560
+                737,
+                486
             ]
         ]
     },
-    "SOURCE": "./test_videos/C920_2025_07_07_18_19_08.mp4"
+    "SOURCE": "./test_videos/WIN_20250728_16_17_45_Pro.mp4"
 }

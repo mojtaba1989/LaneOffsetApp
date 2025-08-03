@@ -290,7 +290,8 @@ class offsetToCenterLine:
 
     def set_source(self):
         self.source = self.config.get('SOURCE', '')
-        if not self.source:
+        self.logger.debug(f"Raw source: {self.source}")
+        if self.source=='':
             self.logger.error("Source is not set in the configuration. return 1")
             return 1
         if isinstance(self.source, str):
@@ -357,13 +358,15 @@ class offsetToCenterLine:
             return 3
         return 0
 
-    def get_offset(self, boundary_points, y_threshold):
+    def get_offset(self, boundary_points, y_threshold, return_points=False):
         valid_points = boundary_points[boundary_points[:, 0] > y_threshold]
         if len(valid_points) == 0:
             self.logger.warning("No valid points found above the y_threshold.")
             return 1, None
-        left_point = [valid_points[0, 0], valid_points[0, 1]]
-        right_point = [valid_points[0, 0], valid_points[0, 2]]
+        left_point = [valid_points[0, 1], valid_points[0, 0]]
+        right_point = [valid_points[0, 2], valid_points[0, 0]]
+        self.logger.debug(f"Left point: {left_point}")
+        self.logger.debug(f"Right point: {right_point}")
         center_point = [(left_point[0] + right_point[0]) / 2, (left_point[1] + right_point[1]) / 2]
         lane_width = calculate_distance(left_point, right_point)
         if lane_width == 0:
@@ -373,6 +376,8 @@ class offsetToCenterLine:
         intersect_left = find_intersection(left_point, right_point, self.config['REF']['left'])
         intersect_right = find_intersection(left_point, right_point, self.config['REF']['right'])
         intersect_center = find_intersection(left_point, right_point, self.config['REF']['center'])
+        if return_points:
+            return 0, (left_point, right_point, center_point, intersect_left, intersect_right, intersect_center)
 
         left_offset = calculate_distance(center_point, intersect_left)
         right_offset = calculate_distance(center_point, intersect_right)
@@ -479,6 +484,75 @@ class offsetToCenterLine:
             return 4, None
         return 0, np.nanmean(measured)
     
+    def process_frame_for_web(self, frame, run_model=True):
+        if self.model is None and run_model is True:
+            self.logger.error("Model is not initialized. return 1")
+            return 1, None
+        if frame is None:
+            self.logger.error("Frame is None. return 2")
+            return 2, None
+
+        ref = self.config['REF'].get('image_size', [1280, 720])
+        W, H = ref[0], ref[1]
+        
+        _, frame_tmp = self.pre_process_frame(self.config, frame, to_model=True)
+        _, frame     = self.pre_process_frame(self.config, frame, to_model=False, shape=(W, H))
+        if not run_model:
+            self.logger.info("Skipping model inference as run_model is False.")
+            return 0, frame
+        results = self.model(frame_tmp, verbose=False)
+
+        max_contour_length = 0
+        max_contour = None
+        segmentation_found = False
+
+        for result in results:
+            if result.masks is not None:
+                for mask in result.masks.data:
+                    mask_cpu = mask.cpu().numpy()
+                    mask_cpu = cv2.resize(mask_cpu, (W, H), interpolation=cv2.INTER_NEAREST)
+                    contours, _ = cv2.findContours((mask_cpu * 255).astype('uint8'),
+                                                    cv2.RETR_EXTERNAL,
+                                                    cv2.CHAIN_APPROX_SIMPLE)
+                for contour in contours:
+                    if len(contour) > max_contour_length:
+                        max_contour_length = len(contour)
+                        max_contour = contour
+        if max_contour is not None: 
+                segmentation_found = True
+        
+        if not segmentation_found:
+            self.logger.warning("No segmentation found in the frame.")
+            return 5, None
+        
+        red_mask = np.zeros((H, W), dtype=np.uint8)
+        cv2.drawContours(red_mask, [max_contour], -1, (255), thickness=5)
+        frame_with_mask = cv2.addWeighted(frame, 1, cv2.cvtColor(red_mask, cv2.COLOR_GRAY2BGR), 0.5, 0)
+        for key in ['left', 'right', 'center']:
+            if key in self.config['REF']:
+                line = self.config['REF'][key]
+                cv2.line(frame_with_mask, (line[0][0], line[0][1]), (line[1][0], line[1][1]), (255, 0, 0), 2)
+        ys, xs = np.where(red_mask == 255)
+        pixel_indices = np.array(list(zip(xs, ys)))
+        final_contour = []
+        for v in np.unique(pixel_indices[:, 1]):
+            u_vals = pixel_indices[pixel_indices[:, 1] == v, 0]
+            # if len(final_contour) > 0 and np.max(u_vals) - np.min(u_vals) < final_contour[-1][3]:
+            #     break
+            final_contour.append([v, np.min(u_vals), np.max(u_vals), np.max(u_vals) - np.min(u_vals)])
+        final_contour = np.array(final_contour)
+
+        for y_threshold in np.linspace(np.min(final_contour[:, 0]), np.max(final_contour[:, 0]), self.config.get('NUM_OF_LINES', 2)+2)[1:-1]:
+            status, points = self.get_offset(final_contour, y_threshold, return_points=True)
+            if status != 0:
+                self.logger.warning(f"Error calculating offset at {y_threshold}: {status}")
+                continue
+            for point in points:
+                if point is not None:
+                    cv2.circle(frame_with_mask, (int(point[0]), int(point[1])), 5, (0, 255, 0), -1)
+        return 0, frame_with_mask
+        
+    
     def publish(self, offset):
         status = self.send_udp_message(offset)
         if status in [2, 3]:
@@ -548,10 +622,7 @@ class QueueLogHandler(logging.Handler):
         self.log_queue.put(msg)
 
 app = Flask(__name__)
-camera_capture = {
-    "cap": None,
-    "init": False
-}
+web_camera_feed = None
 config = {}
 server = None
 
@@ -562,25 +633,68 @@ log_stream_handler.setLevel(logging.INFO)
 logger = logging.getLogger("offsetToCenterLine")
 logger.addHandler(log_stream_handler)
 
-def init_camera_capture(reset=False):
-    cam_source = config.get("SOURCE", 0)
-    if camera_capture['init'] is True and not reset:
-        return
-    logger.info("Initializing camera capture...")
-    if camera_capture["cap"] is not None:
-        camera_capture["cap"].release()
-    camera_capture["cap"] = cv2.VideoCapture(cam_source)
-    camera_capture["init"] = camera_capture["cap"].isOpened()
+class app_camera_feed:
+    def __init__(self):
+        self.cap = None
+        self.process = None
+        self.shutdown = None
+        self.init_all()
+
+
+    def init_all(self):
+        temp = offsetToCenterLine()
+        temp.load_config(config)
+        temp.set_source()
+        temp.open_source()
+        temp.init_model()
+        self.cap = temp.cap
+        self.process = temp.process_frame_for_web
+        logger.critical("Camera feed initialized successfully.")
+    def update_frame(self, process=False):
+        ret, frame = self.cap.read()
+        if not ret:
+            logger.error("Failed to read frame from camera.")
+            return None
+        status, processed_frame = self.process(frame, process)
+        if status != 0:
+            logger.error(f"Error processing frame: {status}")
+            return None
+        return processed_frame
+
+    def is_opened(self):
+        if self.cap is None:
+            logger.error("Camera capture is not initialized.")
+            return False
+        if not hasattr(self.cap, 'isOpened'):
+            logger.error("Camera capture does not have isOpened method.")
+            return False
+        if not callable(self.cap.isOpened):
+            logger.error("Camera capture isOpened is not callable.")
+            return False
+        return self.cap.isOpened()
+
+    def close(self):
+        if self.cap is not None:
+            self.cap.release()
+            self.cap = None
+            logger.critical("Camera capture forced release.")
+
 
 @app.route('/')
 def home():
     global server
     global config
+    global web_camera_feed
     with open(CONFIG_FILE, 'r') as f:
         config = json.load(f)
+    logger.critical("Loading configuration from config.json")
     server = offsetToCenterLine()
-    logger.info("Starting server...")
-    init_camera_capture(reset=True)
+    logger.critical("Starting server...")
+    if web_camera_feed is not None:
+        logger.critical("Closing previous camera feed...")
+        web_camera_feed.close()
+        web_camera_feed = None
+    logger.critical("Main page loaded successfully.")
     return render_template('index.html')
 
 @app.route('/run', methods=['POST'])
@@ -625,7 +739,6 @@ def save_config():
         logger.error("Invalid JSON received for configuration.")
         return jsonify({"error": "Invalid JSON"}), 400
     logger.info("Saving configuration...")
-    init_camera_capture(reset=True)
     try:
         with open("config.json", "w") as f:
             json.dump(config, f, indent=4)
@@ -663,20 +776,25 @@ def serve_log_file(filename):
 
 @app.route('/camera')
 def camera_page():
+    global web_camera_feed
+    web_camera_feed = app_camera_feed()
+    if not web_camera_feed.is_opened():
+        logger.error("Camera capture is not opened.")
+        return "Camera capture is not opened.", 500
     return render_template('camera.html')
 
 @app.route('/capture_frame')
 def capture_frame():
-    cap = camera_capture["cap"]
-    if cap is None or not cap.isOpened():
-        return "Camera not initialized", 400
+    global web_camera_feed
+    if web_camera_feed is None:
+        logger.error("Camera feed is not initialized.")
+        return "Camera feed is not initialized.", 500
 
-    success, frame = cap.read()
-    if not success:
-        return "Failed to capture frame", 500
-    
+    frame = web_camera_feed.update_frame(request.args.get('run_model', 'false').lower() == 'true')
+    if frame is None:
+        logger.error("Failed to capture frame from camera.")
+        return "Error processing frame", 500
 
-    _, frame = offsetToCenterLine.pre_process_frame(config, frame, to_model=False, shape=(1280, 720))
     _, buffer = cv2.imencode('.jpg', frame)
     return Response(buffer.tobytes(), mimetype='image/jpeg')
 
@@ -714,7 +832,7 @@ def system_control(action):
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=False)
 
 
 
